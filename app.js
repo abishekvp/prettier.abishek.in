@@ -136,6 +136,7 @@ rawCodeInput?.addEventListener('input', () => {
   const lines = rawCodeInput.value.split('\n').length;
   const bytes = new TextEncoder().encode(rawCodeInput.value).length;
   inputMeta.textContent = `${lines} lines · ${bytesToSize(bytes)}`;
+  localStorage.setItem('prettier_raw_code', rawCodeInput.value);
 });
 
 // Update Status Bar Rules
@@ -154,7 +155,10 @@ function updateStatusRules() {
 
 languageSelect.addEventListener('change', () => {
   updateStatusRules();
-  loadSampleForCurrentLanguage();
+  localStorage.setItem('prettier_lang', languageSelect.value);
+  if (rawCodeInput.value.trim()) {
+    formatCode();
+  }
 });
 
 // ================= BUILT-IN FALLBACK BEAUTIFIERS =================
@@ -510,12 +514,16 @@ btnClearCode?.addEventListener('click', () => {
   updateLineNumbers(formattedCodeOutput, outputLines);
   inputMeta.textContent = '0 lines · 0 B';
   outputMeta.textContent = '0 lines · 0 B';
+  localStorage.removeItem('prettier_raw_code');
+  diffContainer.innerHTML = '';
+  formatErrorBanner.style.display = 'none';
 });
 
 btnPasteCode?.addEventListener('click', async () => {
   try {
     const text = await navigator.clipboard.readText();
     rawCodeInput.value = text;
+    localStorage.setItem('prettier_raw_code', text);
     updateLineNumbers(rawCodeInput, inputLines);
     formatCode();
   } catch (err) {
@@ -555,6 +563,73 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
+// Column Resizing & Persistence
+const prettierResizer = document.getElementById('prettierResizer');
+const paneEditorEl = document.getElementById('paneEditor');
+const rawCol = paneEditorEl?.children[0];
+const formattedCol = paneEditorEl?.children[2];
+
+function applyPrettierColRatio(ratio) {
+  if (!rawCol || !formattedCol) return;
+  const clamped = Math.max(0.15, Math.min(0.85, ratio));
+  rawCol.style.flex = `${clamped} 1 0%`;
+  formattedCol.style.flex = `${1 - clamped} 1 0%`;
+  localStorage.setItem('prettier_col_ratio', clamped.toFixed(4));
+}
+
+if (prettierResizer && paneEditorEl) {
+  let isResizing = false;
+
+  prettierResizer.addEventListener('mousedown', (e) => {
+    isResizing = true;
+    prettierResizer.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!isResizing || !paneEditorEl) return;
+    const rect = paneEditorEl.getBoundingClientRect();
+    const ratio = (e.clientX - rect.left) / rect.width;
+    applyPrettierColRatio(ratio);
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (isResizing) {
+      isResizing = false;
+      prettierResizer.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+  });
+
+  // Restore saved ratio
+  const savedRatio = parseFloat(localStorage.getItem('prettier_col_ratio'));
+  if (!isNaN(savedRatio)) {
+    applyPrettierColRatio(savedRatio);
+  }
+}
+
 // Initial Setup
+const savedLang = localStorage.getItem('prettier_lang');
+if (savedLang && Array.from(languageSelect.options).some(o => o.value === savedLang)) {
+  languageSelect.value = savedLang;
+}
 updateStatusRules();
-loadSampleForCurrentLanguage();
+
+const savedCode = localStorage.getItem('prettier_raw_code') || '';
+if (savedCode) {
+  rawCodeInput.value = savedCode;
+  updateLineNumbers(rawCodeInput, inputLines);
+  const lines = rawCodeInput.value.split('\n').length;
+  const bytes = new TextEncoder().encode(rawCodeInput.value).length;
+  inputMeta.textContent = `${lines} lines · ${bytesToSize(bytes)}`;
+  formatCode();
+} else {
+  rawCodeInput.value = '';
+  formattedCodeOutput.value = '';
+  updateLineNumbers(rawCodeInput, inputLines);
+  updateLineNumbers(formattedCodeOutput, outputLines);
+  inputMeta.textContent = '0 lines · 0 B';
+  outputMeta.textContent = '0 lines · 0 B';
+}

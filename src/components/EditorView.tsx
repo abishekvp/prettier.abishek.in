@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { bytesToSize } from '@/lib/prettier';
 import {
   FileCode,
@@ -35,6 +35,46 @@ export const EditorView: React.FC<EditorViewProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [leftRatio, setLeftRatio] = useState<number>(0.5);
+  const [isDragging, setIsDragging] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('prettier_col_ratio');
+    if (saved) {
+      const val = parseFloat(saved);
+      if (!isNaN(val) && val >= 0.15 && val <= 0.85) {
+        setLeftRatio(val);
+      }
+    }
+  }, []);
+
+  const handleMouseDown = () => {
+    setIsDragging(true);
+  };
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const ratio = Math.max(0.15, Math.min(0.85, (e.clientX - rect.left) / rect.width));
+      setLeftRatio(ratio);
+      localStorage.setItem('prettier_col_ratio', ratio.toFixed(4));
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging]);
 
   const handleCopy = () => {
     if (!formattedCode) return;
@@ -82,10 +122,13 @@ export const EditorView: React.FC<EditorViewProps> = ({
         </div>
       )}
 
-      {/* Main Dual Columns */}
-      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-surface-border min-h-0">
+      {/* Main Dual Columns with Draggable Resizer */}
+      <div ref={containerRef} className="flex-1 flex flex-col md:flex-row min-h-0 relative select-none">
         {/* Left Column: Raw Input */}
-        <div className="flex flex-col h-full bg-surface-card min-h-0">
+        <div
+          style={{ flex: `${leftRatio} 1 0%` }}
+          className="flex flex-col h-full bg-surface-card min-h-0 min-w-[150px]"
+        >
           <div className="h-9 px-3 border-b border-surface-border flex items-center justify-between text-xs text-slate-400 bg-surface-subtle/50 select-none flex-shrink-0">
             <div className="flex items-center gap-2 font-semibold text-slate-200">
               <FileCode className="w-3.5 h-3.5 text-blue-400" />
@@ -143,15 +186,27 @@ export const EditorView: React.FC<EditorViewProps> = ({
             <textarea
               value={rawCode}
               onChange={(e) => setRawCode(e.target.value)}
-              placeholder="Paste or type unformatted code here..."
+              placeholder=""
               spellCheck={false}
               className="flex-1 p-3 bg-transparent text-slate-100 font-mono text-[12px] leading-relaxed resize-none focus:outline-none selection:bg-blue-600/30 overflow-auto whitespace-pre"
             />
           </div>
         </div>
 
+        {/* Draggable Resizer Bar */}
+        <div
+          onMouseDown={handleMouseDown}
+          className={`w-1.5 hidden md:block cursor-col-resize hover:bg-blue-500 transition-colors z-10 flex-shrink-0 ${
+            isDragging ? 'bg-blue-500' : 'bg-surface-border'
+          }`}
+          title="Drag to resize columns"
+        />
+
         {/* Right Column: Formatted Output */}
-        <div className="flex flex-col h-full bg-surface-card min-h-0">
+        <div
+          style={{ flex: `${1 - leftRatio} 1 0%` }}
+          className="flex flex-col h-full bg-surface-card min-h-0 min-w-[150px]"
+        >
           <div className="h-9 px-3 border-b border-surface-border flex items-center justify-between text-xs text-slate-400 bg-surface-subtle/50 select-none flex-shrink-0">
             <div className="flex items-center gap-2 font-semibold text-slate-200">
               <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
@@ -190,7 +245,7 @@ export const EditorView: React.FC<EditorViewProps> = ({
             <textarea
               readOnly
               value={formattedCode}
-              placeholder="Formatted output will appear here after clicking Format Code..."
+              placeholder=""
               spellCheck={false}
               className="flex-1 p-3 bg-transparent text-slate-100 font-mono text-[12px] leading-relaxed resize-none focus:outline-none selection:bg-blue-600/30 overflow-auto whitespace-pre"
             />

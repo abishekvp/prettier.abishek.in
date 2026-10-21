@@ -31,7 +31,7 @@ const EXTENSIONS: Record<SupportedLanguage, string> = {
 
 export default function PrettierPage() {
   const [language, setLanguage] = useState<SupportedLanguage>('javascript');
-  const [rawCode, setRawCode] = useState<string>(SAMPLES.javascript);
+  const [rawCode, setRawCode] = useState<string>('');
   const [formattedCode, setFormattedCode] = useState<string>('');
   const [diffRows, setDiffRows] = useState<DiffRow[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('editor');
@@ -49,6 +49,29 @@ export default function PrettierPage() {
     bracketSpacing: true,
     arrowParens: 'always'
   });
+
+  // Restore saved state from local storage on mount
+  useEffect(() => {
+    const savedLang = localStorage.getItem('prettier_lang') as SupportedLanguage | null;
+    if (savedLang) setLanguage(savedLang);
+    const savedCode = localStorage.getItem('prettier_raw_code');
+    if (savedCode) {
+      setRawCode(savedCode);
+    }
+  }, []);
+
+  // Save changes to local storage
+  useEffect(() => {
+    if (rawCode) {
+      localStorage.setItem('prettier_raw_code', rawCode);
+    } else {
+      localStorage.removeItem('prettier_raw_code');
+    }
+  }, [rawCode]);
+
+  useEffect(() => {
+    localStorage.setItem('prettier_lang', language);
+  }, [language]);
 
   const handleFormat = useCallback(() => {
     setError('');
@@ -88,13 +111,12 @@ export default function PrettierPage() {
     }
   };
 
-  // Language change loads sample
+  // Language change formats existing code if present
   useEffect(() => {
-    if (SAMPLES[language]) {
-      setRawCode(SAMPLES[language]);
-      setError('');
+    if (rawCode.trim()) {
+      handleFormat();
     }
-  }, [language]);
+  }, [language, handleFormat]);
 
   // Initial format on mount
   useEffect(() => {
